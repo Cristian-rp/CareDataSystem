@@ -12,284 +12,793 @@ import {
 } from 'react-native';
 import { DataContext } from '../context/DataContext';
 import { COLORS } from '../theme/colors';
-import UdecLogo from '../components/UdecLogo';
-import GeminiAssistantModal from '../components/GeminiAssistantModal';
+import ResponsiveLayout from '../components/ResponsiveLayout';
+
+const CATEGORIAS_INSUMOS = [
+  'Analgésicos',
+  'Curación',
+  'Desinfectantes',
+  'Soluciones',
+  'Antiinflamatorios',
+  'Insumos Descartables',
+  'Equipos Médicos',
+  'Primeros Auxilios',
+  'General',
+];
 
 export default function InventarioScreen({ navigation }) {
-  const { inventario, atenciones, agregarInsumo, actualizarStock, eliminarInsumo } = useContext(DataContext);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [showGemini, setShowGemini] = useState(false);
-  const [menuAbierto, setMenuAbierto] = useState(false);
-
   const { width } = useWindowDimensions();
-  const isMobile = width < 768; 
+  const isMobile = width < 768;
+
+  const {
+    inventario,
+    atenciones,
+    agregarInsumo,
+    actualizarStock,
+    eliminarInsumo,
+  } = useContext(DataContext);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const [codigo, setCodigo] = useState('');
   const [nombre, setNombre] = useState('');
-  const [categoria, setCategoria] = useState('');
+  const [categoria, setCategoria] = useState('Analgésicos');
   const [stock, setStock] = useState('');
   const [stockMinimo, setStockMinimo] = useState('10');
   const [lote, setLote] = useState('');
 
+  // Modal ajuste rápido
+  const [ajusteModalVisible, setAjusteModalVisible] = useState(false);
+  const [insumoSeleccionado, setInsumoSeleccionado] = useState(null);
+  const [modoAjuste, setModoAjuste] = useState('sumar');
+  const [cantidadAjuste, setCantidadAjuste] = useState('');
+
   const totalUnidades = inventario.reduce((acc, item) => acc + item.stock, 0);
-  const stockCriticoCount = inventario.filter((item) => item.stock <= item.stockMinimo).length;
+  const stockCriticoCount = inventario.filter(
+    (item) => item.stock <= item.stockMinimo
+  ).length;
+
+  const handleAbrirModal = () => {
+    setCategoria('Analgésicos');
+    setDropdownOpen(false);
+    setModalVisible(true);
+  };
 
   const handleGuardar = () => {
     if (!codigo.trim() || !nombre.trim() || !stock) {
-      Alert.alert('Incompleto', 'Ingresa el código, nombre y stock del producto.');
+      Alert.alert(
+        'Campos Incompletos',
+        'Ingresa el código, nombre y stock inicial del insumo.'
+      );
       return;
     }
-    agregarInsumo({ codigo, nombre, categoria, stock, stockMinimo, lote });
+
+    agregarInsumo({
+      codigo: codigo.trim(),
+      nombre: nombre.trim(),
+      categoria,
+      stock: parseInt(stock, 10) || 0,
+      stockMinimo: parseInt(stockMinimo, 10) || 10,
+      lote: lote.trim(),
+    });
+
     setModalVisible(false);
+    setDropdownOpen(false);
     setCodigo('');
     setNombre('');
-    setCategoria('');
+    setCategoria('Analgésicos');
     setStock('');
+    setStockMinimo('10');
     setLote('');
   };
 
+  const abrirModalAjuste = (item) => {
+    setInsumoSeleccionado(item);
+    setModoAjuste('sumar');
+    setCantidadAjuste('');
+    setAjusteModalVisible(true);
+  };
+
+  const aplicarAjusteRapido = (delta) => {
+    if (!insumoSeleccionado) return;
+    actualizarStock(insumoSeleccionado.id, delta);
+    setInsumoSeleccionado((prev) => ({
+      ...prev,
+      stock: Math.max(0, prev.stock + delta),
+    }));
+  };
+
+  const confirmarAjustePersonalizado = () => {
+    if (!insumoSeleccionado) return;
+    const valor = parseInt(cantidadAjuste, 10);
+    if (isNaN(valor) || valor < 0) {
+      Alert.alert('Cantidad inválida', 'Ingresa un número entero válido.');
+      return;
+    }
+    let delta = 0;
+    if (modoAjuste === 'sumar') delta = valor;
+    else if (modoAjuste === 'restar') delta = -valor;
+    else if (modoAjuste === 'fijar') delta = valor - insumoSeleccionado.stock;
+
+    if (delta !== 0) actualizarStock(insumoSeleccionado.id, delta);
+    setAjusteModalVisible(false);
+    setInsumoSeleccionado(null);
+    setCantidadAjuste('');
+  };
+
   return (
-    <View style={styles.mainLayout}>
-      {!isMobile && (
-        <View style={styles.sidebar}>
-          <View style={styles.logoHeader}>
-            <Text style={styles.logoTitle}>CareData System</Text>
-            <Text style={styles.logoSub}>ENFERMERÍA UDEC · SOACHA</Text>
-          </View>
-          <View style={styles.menuList}>
-            <TouchableOpacity style={[styles.menuItem, styles.menuActive]}>
-              <Text style={styles.menuTextActive}>📦 Dashboard / Insumos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Usuarios')}>
-              <Text style={styles.menuText}>📋 Registro de Atenciones</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Proveedores')}>
-              <Text style={styles.menuText}>🚚 Proveedores y Pedidos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Historial')}>
-              <Text style={styles.menuText}>📊 Historial y Reportes</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.userBox}>
-            <Text style={styles.userRole}>Personal de Turno:</Text>
-            <Text style={styles.userName}>cestebanruiz</Text>
-            <TouchableOpacity onPress={() => navigation.replace('Login')}>
-              <Text style={styles.btnExitText}>↳ Cerrar Sesión</Text>
-            </TouchableOpacity>
-          </View>
+    <ResponsiveLayout activeScreen="Inventario" navigation={navigation}>
+      {/* ENCABEZADO RESPONSIVO */}
+      <View style={[styles.topHeader, isMobile && styles.topHeaderMobile]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.pageTitle, isMobile && { fontSize: 18 }]}>
+            Inventario General de Enfermería
+          </Text>
+          <Text style={styles.pageSub}>
+            Monitoreo en tiempo real de insumos y medicamentos
+          </Text>
         </View>
-      )}
+        <TouchableOpacity
+          style={[styles.btnPrimary, isMobile && styles.btnPrimaryMobile]}
+          onPress={handleAbrirModal}
+        >
+          <Text style={styles.btnPrimaryText}>+ Registrar Insumo</Text>
+        </TouchableOpacity>
+      </View>
 
-      <View style={styles.contentWrapper}>
-        {isMobile && (
-          <View style={styles.mobileHeader}>
-            <TouchableOpacity onPress={() => setMenuAbierto(!menuAbierto)} style={styles.btnHamburger}>
-              <Text style={styles.btnHamburgerText}>☰</Text>
-            </TouchableOpacity>
-            <Text style={styles.mobileHeaderTitle}>CareData System</Text>
-          </View>
-        )}
-
-        {isMobile && menuAbierto && (
-          <View style={styles.mobileMenu}>
-            <TouchableOpacity style={styles.mobileMenuItem} onPress={() => { setMenuAbierto(false); }}>
-              <Text style={styles.mobileMenuTextActive}>📦 Dashboard / Insumos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mobileMenuItem} onPress={() => { setMenuAbierto(false); navigation.navigate('Usuarios'); }}>
-              <Text style={styles.mobileMenuText}>📋 Registro de Atenciones</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mobileMenuItem} onPress={() => { setMenuAbierto(false); navigation.navigate('Proveedores'); }}>
-              <Text style={styles.mobileMenuText}>🚚 Proveedores y Pedidos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mobileMenuItem} onPress={() => { setMenuAbierto(false); navigation.navigate('Historial'); }}>
-              <Text style={styles.mobileMenuText}>📊 Historial y Reportes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mobileMenuItem} onPress={() => { setMenuAbierto(false); navigation.replace('Login'); }}>
-              <Text style={styles.btnExitText}>↳ Cerrar Sesión</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.watermarkBox} pointerEvents="none">
-          <UdecLogo width={isMobile ? 300 : 580} height={isMobile ? 300 : 580} />
+      {/* MÉTRICAS KPI (4 columnas en PC, 2x2 en Celular) */}
+      <View style={[styles.kpiRow, isMobile && styles.kpiRowMobile]}>
+        <View style={[styles.kpiCard, isMobile && styles.kpiCardMobile]}>
+          <Text style={styles.kpiTitle}>Tipos de Insumos</Text>
+          <Text style={styles.kpiValue}>{inventario.length}</Text>
         </View>
 
-        <ScrollView style={styles.content}>
-          <View style={[styles.topHeader, isMobile && { flexDirection: 'column', alignItems: 'flex-start', gap: 15 }]}>
-            <View>
-              <Text style={[styles.pageTitle, isMobile && { fontSize: 18 }]}>Inventario General de Enfermería</Text>
-              <Text style={styles.pageSub}>Monitoreo en tiempo real de insumos y medicamentos</Text>
-            </View>
-            <TouchableOpacity style={styles.btnPrimary} onPress={() => setModalVisible(true)}>
-              <Text style={styles.btnPrimaryText}>+ Registrar Insumo</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={[styles.kpiCard, isMobile && styles.kpiCardMobile]}>
+          <Text style={styles.kpiTitle}>Unidades en Stock</Text>
+          <Text style={styles.kpiValue}>{totalUnidades} u.</Text>
+        </View>
 
-          <View style={[styles.kpiRow, isMobile && { flexWrap: 'wrap' }]}>
-            <View style={[styles.kpiCard, isMobile && { minWidth: '45%' }]}>
-              <Text style={styles.kpiTitle}>Tipos de Insumos</Text>
-              <Text style={styles.kpiValue}>{inventario.length}</Text>
-            </View>
-            <View style={[styles.kpiCard, isMobile && { minWidth: '45%' }]}>
-              <Text style={styles.kpiTitle}>Unidades en Stock</Text>
-              <Text style={styles.kpiValue}>{totalUnidades} u.</Text>
-            </View>
-            <View style={[styles.kpiCard, stockCriticoCount > 0 && styles.kpiCardWarning, isMobile && { minWidth: '45%' }]}>
-              <Text style={styles.kpiTitle}>Stock Bajo / Crítico</Text>
-              <Text style={[styles.kpiValue, stockCriticoCount > 0 && { color: COLORS.danger }]}>{stockCriticoCount}</Text>
-            </View>
-            <View style={[styles.kpiCard, isMobile && { minWidth: '45%' }]}>
-              <Text style={styles.kpiTitle}>Atenciones Registradas</Text>
-              <Text style={styles.kpiValue}>{atenciones.length}</Text>
-            </View>
-          </View>
+        <View
+          style={[
+            styles.kpiCard,
+            isMobile && styles.kpiCardMobile,
+            stockCriticoCount > 0 && styles.kpiCardWarning,
+          ]}
+        >
+          <Text style={styles.kpiTitle}>Stock Bajo / Crítico</Text>
+          <Text
+            style={[
+              styles.kpiValue,
+              stockCriticoCount > 0 && { color: COLORS.danger },
+            ]}
+          >
+            {stockCriticoCount}
+          </Text>
+        </View>
 
-          {/* TABLA CORREGIDA */}
-          <View style={styles.tableCard}>
-            <View style={styles.tableTitleBar}>
-              <Text style={styles.tableHeaderTitle}>TABLA GENERAL DE MEDICAMENTOS Y MATERIALES</Text>
+        <View style={[styles.kpiCard, isMobile && styles.kpiCardMobile]}>
+          <Text style={styles.kpiTitle}>Atenciones Registradas</Text>
+          <Text style={styles.kpiValue}>{atenciones.length}</Text>
+        </View>
+      </View>
+
+      {/* TABLA DE INSUMOS CON SCROLL HORIZONTAL EN MÓVIL */}
+      <View style={styles.tableCard}>
+        <View style={styles.tableTitleBar}>
+          <Text style={styles.tableHeaderTitle}>
+            TABLA GENERAL DE MEDICAMENTOS Y MATERIALES
+          </Text>
+        </View>
+
+        <ScrollView horizontal={isMobile} showsHorizontalScrollIndicator={true}>
+          <View style={isMobile ? { minWidth: 680 } : { width: '100%' }}>
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.th, { flex: 0.9 }]}>CÓDIGO</Text>
+              <Text style={[styles.th, { flex: 2 }]}>NOMBRE DEL INSUMO</Text>
+              <Text style={[styles.th, { flex: 1.4 }]}>CATEGORÍA</Text>
+              <Text style={[styles.th, { flex: 0.9 }]}>LOTE</Text>
+              <Text style={[styles.th, { flex: 1, textAlign: 'center' }]}>
+                DISPONIBLE
+              </Text>
+              <Text style={[styles.th, { flex: 1.8, textAlign: 'right' }]}>
+                ACCIONES
+              </Text>
             </View>
-            
-            <ScrollView horizontal={true} showsHorizontalScrollIndicator={isMobile} contentContainerStyle={{ flexGrow: 1 }}>
-              <View style={{ flex: 1, minWidth: isMobile ? 700 : '100%' }}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.th, { flex: 1 }]}>CÓDIGO</Text>
-                  <Text style={[styles.th, { flex: 2 }]}>NOMBRE DEL INSUMO</Text>
-                  <Text style={[styles.th, { flex: 1.5 }]}>CATEGORÍA</Text>
-                  <Text style={[styles.th, { flex: 1 }]}>LOTE</Text>
-                  <Text style={[styles.th, { flex: 1, textAlign: 'center' }]}>DISPONIBLE</Text>
-                  <Text style={[styles.th, { flex: 1.5, textAlign: 'right' }]}>ACCIONES</Text>
-                </View>
-                {inventario.length === 0 ? (
-                  <View style={styles.emptyBox}>
-                    <Text style={styles.emptyText}>No hay elementos guardados en la tabla.</Text>
-                    <Text style={styles.emptySub}>Presiona "+ Registrar Insumo" para comenzar a poblar la tabla.</Text>
-                  </View>
-                ) : (
-                  inventario.map((item) => {
-                    const isLow = item.stock <= item.stockMinimo;
-                    return (
-                      <View key={item.id} style={styles.tableRow}>
-                        <Text style={[styles.tdCode, { flex: 1 }]}>{item.codigo}</Text>
-                        <Text style={[styles.td, { flex: 2, fontWeight: 'bold' }]}>{item.nombre}</Text>
-                        <Text style={[styles.tdCategory, { flex: 1.5 }]}>{item.categoria || 'General'}</Text>
-                        <Text style={[styles.td, { flex: 1 }]}>{item.lote}</Text>
-                        <View style={[{ flex: 1, alignItems: 'center' }]}>
-                          <Text style={[styles.badgeStock, isLow && styles.badgeLow]}>{item.stock} u.</Text>
-                        </View>
-                        <View style={[styles.actionRow, { flex: 1.5 }]}>
-                          <TouchableOpacity style={styles.btnSmall} onPress={() => actualizarStock(item.id, -1)}><Text style={styles.btnSmallText}>-1</Text></TouchableOpacity>
-                          <TouchableOpacity style={styles.btnSmall} onPress={() => actualizarStock(item.id, 1)}><Text style={styles.btnSmallText}>+1</Text></TouchableOpacity>
-                          <TouchableOpacity style={styles.btnDangerSmall} onPress={() => eliminarInsumo(item.id)}><Text style={styles.btnDangerText}>✕</Text></TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  })
-                )}
+
+            {inventario.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>
+                  No hay elementos guardados en la tabla.
+                </Text>
+                <Text style={styles.emptySub}>
+                  Presiona "+ Registrar Insumo" para comenzar a poblar la tabla.
+                </Text>
               </View>
-            </ScrollView>
+            ) : (
+              inventario.map((item) => {
+                const isLow = item.stock <= item.stockMinimo;
+                return (
+                  <View key={item.id} style={styles.tableRow}>
+                    <Text style={[styles.tdCode, { flex: 0.9 }]}>
+                      {item.codigo}
+                    </Text>
+                    <Text style={[styles.td, { flex: 2, fontWeight: 'bold' }]}>
+                      {item.nombre}
+                    </Text>
+                    <Text style={[styles.tdCategory, { flex: 1.4 }]}>
+                      {item.categoria || 'General'}
+                    </Text>
+                    <Text style={[styles.td, { flex: 0.9 }]}>{item.lote}</Text>
+
+                    <View style={{ flex: 1, alignItems: 'center' }}>
+                      <Text
+                        style={[styles.badgeStock, isLow && styles.badgeLow]}
+                      >
+                        {item.stock} u.
+                      </Text>
+                    </View>
+
+                    <View style={[styles.actionRow, { flex: 1.8 }]}>
+                      <TouchableOpacity
+                        style={styles.btnSmall}
+                        onPress={() => actualizarStock(item.id, -1)}
+                      >
+                        <Text style={styles.btnSmallText}>-1</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnSmall}
+                        onPress={() => actualizarStock(item.id, 1)}
+                      >
+                        <Text style={styles.btnSmallText}>+1</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnAdjust}
+                        onPress={() => abrirModalAjuste(item)}
+                      >
+                        <Text style={styles.btnAdjustText}>± Ajustar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.btnDangerSmall}
+                        onPress={() => eliminarInsumo(item.id)}
+                      >
+                        <Text style={styles.btnDangerText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </View>
         </ScrollView>
       </View>
 
-      <TouchableOpacity style={styles.fabGemini} onPress={() => setShowGemini(true)}>
-        <Text style={styles.fabText}>✨ IA Gemini</Text>
-      </TouchableOpacity>
-      <GeminiAssistantModal visible={showGemini} onClose={() => setShowGemini(false)} />
+      {/* MODAL 1: AJUSTE RÁPIDO / MASIVO DE STOCK */}
+      <Modal
+        visible={ajusteModalVisible}
+        animationType="fade"
+        transparent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderBar}>
+              <Text style={styles.modalHeaderBarText}>
+                AJUSTE RÁPIDO DE EXISTENCIAS
+              </Text>
+            </View>
 
+            {insumoSeleccionado && (
+              <View style={{ padding: 20 }}>
+                <View style={styles.ajusteInfoBox}>
+                  <Text style={styles.ajusteInsumoName}>
+                    {insumoSeleccionado.nombre}
+                  </Text>
+                  <Text style={styles.ajusteStockActual}>
+                    Stock actual:{' '}
+                    <Text style={{ fontWeight: '900', color: COLORS.primary }}>
+                      {insumoSeleccionado.stock} u.
+                    </Text>
+                  </Text>
+                </View>
+
+                <Text style={styles.fieldLabel}>Ajuste rápido por lote:</Text>
+                <View style={styles.quickPresetsRow}>
+                  {[-10, -5, +5, +10, +25].map((step) => {
+                    const isNeg = step < 0;
+                    return (
+                      <TouchableOpacity
+                        key={step}
+                        style={[
+                          styles.presetChip,
+                          isNeg ? styles.presetNeg : styles.presetPos,
+                        ]}
+                        onPress={() => aplicarAjusteRapido(step)}
+                      >
+                        <Text
+                          style={[
+                            styles.presetChipText,
+                            { color: isNeg ? COLORS.danger : COLORS.primary },
+                          ]}
+                        >
+                          {step > 0 ? `+${step}` : step}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>
+                  O ingresa una cantidad exacta:
+                </Text>
+                <View style={styles.modeTabsRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modeTab,
+                      modoAjuste === 'sumar' && styles.modeTabActive,
+                    ]}
+                    onPress={() => setModoAjuste('sumar')}
+                  >
+                    <Text
+                      style={[
+                        styles.modeTabText,
+                        modoAjuste === 'sumar' && styles.modeTabTextActive,
+                      ]}
+                    >
+                      + Ingresar
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modeTab,
+                      modoAjuste === 'restar' && styles.modeTabActive,
+                    ]}
+                    onPress={() => setModoAjuste('restar')}
+                  >
+                    <Text
+                      style={[
+                        styles.modeTabText,
+                        modoAjuste === 'restar' && styles.modeTabTextActive,
+                      ]}
+                    >
+                      - Retirar
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modeTab,
+                      modoAjuste === 'fijar' && styles.modeTabActive,
+                    ]}
+                    onPress={() => setModoAjuste('fijar')}
+                  >
+                    <Text
+                      style={[
+                        styles.modeTabText,
+                        modoAjuste === 'fijar' && styles.modeTabTextActive,
+                      ]}
+                    >
+                      = Fijar Total
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder={
+                    modoAjuste === 'fijar'
+                      ? 'Nuevo stock total (Ej. 50)'
+                      : 'Cantidad de unidades (Ej. 15)'
+                  }
+                  placeholderTextColor="#888"
+                  keyboardType="numeric"
+                  value={cantidadAjuste}
+                  onChangeText={setCantidadAjuste}
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.btnCancel}
+                    onPress={() => setAjusteModalVisible(false)}
+                  >
+                    <Text style={styles.btnCancelText}>Cerrar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnSave}
+                    onPress={confirmarAjustePersonalizado}
+                  >
+                    <Text style={styles.btnSaveText}>Aplicar Cambio</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 2: REGISTRAR NUEVO INSUMO */}
       <Modal visible={modalVisible} animationType="fade" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, isMobile && { width: '90%' }]}>
+          <View style={styles.modalCard}>
             <View style={styles.modalHeaderBar}>
-              <Text style={styles.modalHeaderBarText}>REGISTRAR NUEVO INSUMO / MEDICAMENTO</Text>
+              <Text style={styles.modalHeaderBarText}>
+                REGISTRAR NUEVO INSUMO / MEDICAMENTO
+              </Text>
             </View>
-            <ScrollView style={{ padding: 20 }}>
-              <TextInput style={styles.input} placeholder="Código (Ej. GA-001, IB-400)" placeholderTextColor="#888" value={codigo} onChangeText={setCodigo} />
-              <TextInput style={styles.input} placeholder="Nombre del Producto" placeholderTextColor="#888" value={nombre} onChangeText={setNombre} />
-              <TextInput style={styles.input} placeholder="Categoría (Ej. Curación, Analgésicos)" placeholderTextColor="#888" value={categoria} onChangeText={setCategoria} />
-              <TextInput style={styles.input} placeholder="Número de Lote / Serie" placeholderTextColor="#888" value={lote} onChangeText={setLote} />
-              <TextInput style={styles.input} placeholder="Stock Inicial (Unidades)" placeholderTextColor="#888" keyboardType="numeric" value={stock} onChangeText={setStock} />
-              <TextInput style={styles.input} placeholder="Stock Mínimo de Alerta" placeholderTextColor="#888" keyboardType="numeric" value={stockMinimo} onChangeText={setStockMinimo} />
-              <View style={styles.modalActions}>
-                <TouchableOpacity style={styles.btnCancel} onPress={() => setModalVisible(false)}><Text style={styles.btnCancelText}>Cancelar</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.btnSave} onPress={handleGuardar}><Text style={styles.btnSaveText}>Guardar en Tabla</Text></TouchableOpacity>
+
+            <ScrollView style={{ maxHeight: '85%' }}>
+              <View style={{ padding: 20 }}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Código (Ej. GA-001, IB-400)"
+                  placeholderTextColor="#888"
+                  value={codigo}
+                  onChangeText={setCodigo}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nombre del Producto"
+                  placeholderTextColor="#888"
+                  value={nombre}
+                  onChangeText={setNombre}
+                />
+
+                <View style={styles.dropdownWrapper}>
+                  <Text style={styles.fieldLabel}>Categoría del Insumo:</Text>
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    activeOpacity={0.8}
+                    onPress={() => setDropdownOpen(!dropdownOpen)}
+                  >
+                    <Text style={styles.dropdownSelectedText}>{categoria}</Text>
+                    <Text style={styles.dropdownArrow}>
+                      {dropdownOpen ? '▲' : '▼'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {dropdownOpen && (
+                    <View style={styles.dropdownMenu}>
+                      <ScrollView
+                        style={{ maxHeight: 150 }}
+                        nestedScrollEnabled={true}
+                      >
+                        {CATEGORIAS_INSUMOS.map((cat) => {
+                          const isSelected = cat === categoria;
+                          return (
+                            <TouchableOpacity
+                              key={cat}
+                              style={[
+                                styles.dropdownOption,
+                                isSelected && styles.dropdownOptionActive,
+                              ]}
+                              onPress={() => {
+                                setCategoria(cat);
+                                setDropdownOpen(false);
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.dropdownOptionText,
+                                  isSelected && styles.dropdownOptionTextActive,
+                                ]}
+                              >
+                                {cat}
+                              </Text>
+                              {isSelected && (
+                                <Text style={styles.checkIcon}>✓</Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Número de Lote / Serie"
+                  placeholderTextColor="#888"
+                  value={lote}
+                  onChangeText={setLote}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Stock Inicial (Unidades)"
+                  placeholderTextColor="#888"
+                  keyboardType="numeric"
+                  value={stock}
+                  onChangeText={setStock}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Stock Mínimo de Alerta"
+                  placeholderTextColor="#888"
+                  keyboardType="numeric"
+                  value={stockMinimo}
+                  onChangeText={setStockMinimo}
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.btnCancel}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setDropdownOpen(false);
+                    }}
+                  >
+                    <Text style={styles.btnCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnSave}
+                    onPress={handleGuardar}
+                  >
+                    <Text style={styles.btnSaveText}>Guardar en Tabla</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </ScrollView>
           </View>
         </View>
       </Modal>
-    </View>
+    </ResponsiveLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  mainLayout: { flex: 1, flexDirection: 'row', backgroundColor: COLORS.background },
-  sidebar: { width: 230, backgroundColor: COLORS.sidebarBg, padding: 20, justifyContent: 'space-between', zIndex: 2 },
-  logoHeader: { alignItems: 'center', marginBottom: 20 },
-  logoTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textLight, marginTop: 4 },
-  logoSub: { fontSize: 8, fontWeight: '800', color: '#A3E635', letterSpacing: 1 },
-  menuList: { gap: 8, flex: 1, marginTop: 10 },
-  menuItem: { padding: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.08)' },
-  menuActive: { backgroundColor: '#FFFFFF' },
-  menuText: { color: COLORS.textLight, fontWeight: '700', fontSize: 12 },
-  menuTextActive: { color: COLORS.primary, fontWeight: '900', fontSize: 12 },
-  userBox: { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)', paddingTop: 15 },
-  userRole: { fontSize: 9, color: '#D1E7DD' },
-  userName: { fontSize: 13, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 4 },
-  btnExitText: { color: '#FF8A80', fontSize: 11, fontWeight: 'bold' },
-
-  mobileHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.sidebarBg, padding: 15, zIndex: 10 },
-  btnHamburger: { paddingRight: 15 },
-  btnHamburgerText: { color: '#FFFFFF', fontSize: 24, fontWeight: 'bold' },
-  mobileHeaderTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  mobileMenu: { backgroundColor: COLORS.sidebarBg, padding: 15, position: 'absolute', top: 60, left: 0, right: 0, zIndex: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.2)' },
-  mobileMenuItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
-  mobileMenuText: { color: COLORS.textLight, fontSize: 14, fontWeight: '700' },
-  mobileMenuTextActive: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
-
-  contentWrapper: { flex: 1, position: 'relative', overflow: 'hidden' },
-  watermarkBox: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', opacity: 0.10, zIndex: 0 },
-  content: { flex: 1, padding: 24, zIndex: 1 },
-  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  topHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  topHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
   pageTitle: { fontSize: 22, fontWeight: '900', color: COLORS.textPrimary },
   pageSub: { fontSize: 12, color: COLORS.textSecondary },
-  btnPrimary: { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 6 },
+  btnPrimary: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
+  btnPrimaryMobile: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
   btnPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
+
   kpiRow: { flexDirection: 'row', gap: 14, marginBottom: 24 },
-  kpiCard: { flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.82)', padding: 14, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
-  kpiCardWarning: { borderColor: COLORS.danger, backgroundColor: 'rgba(255, 235, 238, 0.88)' },
+  kpiRowMobile: { flexWrap: 'wrap', gap: 10 },
+  kpiCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  kpiCardMobile: {
+    flex: undefined,
+    width: '48%',
+  },
+  kpiCardWarning: {
+    borderColor: COLORS.danger,
+    backgroundColor: 'rgba(255, 235, 238, 0.88)',
+  },
   kpiTitle: { fontSize: 10, color: COLORS.textSecondary, marginBottom: 6 },
   kpiValue: { fontSize: 22, fontWeight: '900', color: COLORS.primary },
-  
-  tableCard: { backgroundColor: 'rgba(255, 255, 255, 0.88)', borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', width: '100%' }, // Aseguramos 100% de ancho
+
+  tableCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
   tableTitleBar: { backgroundColor: COLORS.primary, padding: 12 },
-  tableHeaderTitle: { fontSize: 11, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1 },
-  tableHeaderRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border, padding: 12, backgroundColor: COLORS.surfaceCard },
+  tableHeaderTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    padding: 12,
+    backgroundColor: COLORS.surfaceCard,
+  },
   th: { fontSize: 10, fontWeight: '900', color: COLORS.primary },
-  tableRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
   tdCode: { fontSize: 11, color: COLORS.primary, fontWeight: 'bold' },
   td: { fontSize: 12, color: COLORS.textPrimary },
   tdCategory: { fontSize: 11, color: COLORS.textSecondary },
-  badgeStock: { backgroundColor: COLORS.accentLight, color: COLORS.primary, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, fontSize: 11, fontWeight: 'bold' },
+  badgeStock: {
+    backgroundColor: COLORS.accentLight,
+    color: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
   badgeLow: { backgroundColor: '#FFEBEE', color: COLORS.danger },
-  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6 },
-  btnSmall: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 5 },
+  btnSmall: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
   btnSmallText: { color: COLORS.textPrimary, fontWeight: 'bold', fontSize: 11 },
-  btnDangerSmall: { backgroundColor: '#FFEBEE', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  btnAdjust: {
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  btnAdjustText: { color: COLORS.primary, fontWeight: '800', fontSize: 11 },
+  btnDangerSmall: {
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
   btnDangerText: { color: COLORS.danger, fontWeight: 'bold', fontSize: 11 },
   emptyBox: { padding: 40, alignItems: 'center' },
   emptyText: { color: COLORS.textPrimary, fontSize: 14, fontWeight: 'bold' },
   emptySub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4 },
-  fabGemini: { position: 'absolute', bottom: 24, right: 24, backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 30, elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, zIndex: 10 },
-  fabText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalCard: { width: 420, backgroundColor: COLORS.surface, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', maxHeight: '90%' },
-  modalHeaderBar: { backgroundColor: COLORS.primary, padding: 14 },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  modalHeaderBar: {
+    backgroundColor: COLORS.primary,
+    padding: 14,
+  },
   modalHeaderBarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  input: { backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, color: COLORS.textPrimary, padding: 10, borderRadius: 6, marginBottom: 10, fontSize: 12 },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 },
+  input: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    color: COLORS.textPrimary,
+    padding: 10,
+    borderRadius: 6,
+    marginBottom: 10,
+    fontSize: 12,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+  },
+  ajusteInfoBox: {
+    backgroundColor: COLORS.background,
+    padding: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 14,
+  },
+  ajusteInsumoName: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+  ajusteStockActual: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  quickPresetsRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
+  presetChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  presetNeg: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  presetPos: { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' },
+  presetChipText: { fontWeight: '800', fontSize: 12 },
+  modeTabsRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  modeTabActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  modeTabText: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary },
+  modeTabTextActive: { color: '#FFFFFF', fontWeight: '900' },
+  dropdownWrapper: { marginBottom: 10 },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    padding: 10,
+    borderRadius: 6,
+  },
+  dropdownSelectedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  dropdownArrow: { fontSize: 11, color: COLORS.primary, fontWeight: 'bold' },
+  dropdownMenu: {
+    marginTop: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  dropdownOptionActive: { backgroundColor: '#DCFCE7' },
+  dropdownOptionText: { fontSize: 12, color: '#1E293B' },
+  dropdownOptionTextActive: { fontWeight: '800', color: '#04562B' },
+  checkIcon: { fontSize: 12, fontWeight: '900', color: '#04562B' },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 10,
+  },
   btnCancel: { padding: 10 },
   btnCancelText: { color: COLORS.textSecondary, fontSize: 12 },
-  btnSave: { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 6 },
+  btnSave: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
   btnSaveText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 },
 });
