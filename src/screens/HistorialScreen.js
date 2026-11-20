@@ -1,10 +1,9 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Platform,
   Alert,
   useWindowDimensions,
@@ -12,16 +11,29 @@ import {
 import { DataContext } from '../context/DataContext';
 import { COLORS } from '../theme/colors';
 import ResponsiveLayout from '../components/ResponsiveLayout';
+import UdecLogo from '../components/UdecLogo';
 
 export default function HistorialScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
+  const [isPrinting, setIsPrinting] = useState(false);
 
   const {
     historial = [],
     inventario = [],
     atenciones = [],
+    currentUser,
   } = useContext(DataContext);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const handleAfterPrint = () => {
+        setIsPrinting(false);
+      };
+      window.addEventListener('afterprint', handleAfterPrint);
+      return () => window.removeEventListener('afterprint', handleAfterPrint);
+    }
+  }, []);
 
   const analytics = useMemo(() => {
     let totalEntradas = 0;
@@ -90,24 +102,14 @@ export default function HistorialScreen({ navigation }) {
 
       styleElement.innerHTML = `
         @media print {
-          div[data-testid="sidebar-container"] {
-            display: none !important;
-          }
-          button,
-          div[style*="bottom: 24px"],
-          div[style*="bottom: 16px"] {
-            display: none !important;
-          }
           html, body, #root, div {
             overflow: visible !important;
             height: auto !important;
             max-height: none !important;
-            background-color: #FFFFFF !important;
           }
-          div[data-testid="content-container"] {
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           @page {
             size: A4 portrait;
@@ -115,75 +117,154 @@ export default function HistorialScreen({ navigation }) {
           }
         }
       `;
-      window.print();
+
+      setIsPrinting(true);
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => setIsPrinting(false), 500);
+      }, 150);
     } else {
       Alert.alert('Reporte Generado', 'Vista previa del reporte preparada.');
     }
   };
 
   return (
-    <ResponsiveLayout activeScreen="Historial" navigation={navigation}>
-      {/* ENCABEZADO RESPONSIVO */}
-      <View style={[styles.topHeader, isMobile && styles.topHeaderMobile]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, isMobile && { fontSize: 18 }]}>
-            Analítica, Historial y Auditoría
-          </Text>
-          <Text style={styles.pageSub}>
-            Indicadores gráficos en tiempo real conectados a inventario y atenciones
-          </Text>
+    <ResponsiveLayout
+      activeScreen="Historial"
+      navigation={navigation}
+      hideChrome={isPrinting}
+    >
+      {/* ENCABEZADO EXCLUSIVO PARA EL PDF */}
+      {isPrinting && (
+        <View style={styles.printOnlyHeader}>
+          <UdecLogo width={52} height={52} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.printBrand}>
+              UNIVERSIDAD DE CUNDINAMARCA · SEDE SOACHA
+            </Text>
+            <Text style={styles.printSystem}>
+              CareData System — Reporte Analítico de Enfermería
+            </Text>
+            <Text style={styles.printMeta}>
+              Generado por: {currentUser?.nombreCompleto || 'Personal de Turno'} · Fecha:{' '}
+              {new Date().toLocaleDateString('es-CO')}
+            </Text>
+          </View>
         </View>
-        <TouchableOpacity
-          style={[styles.btnPrimary, isMobile && styles.btnPrimaryMobile]}
-          onPress={handleExportarPDF}
-        >
-          <Text style={styles.btnPrimaryText}>📄 Generar Reporte PDF</Text>
-        </TouchableOpacity>
-      </View>
+      )}
 
-      {/* TARJETAS KPI (4 columnas en PC, 2x2 en Celular) */}
-      <View style={[styles.kpiRow, isMobile && styles.kpiRowMobile]}>
-        <View style={[styles.kpiCard, isMobile && styles.kpiCardMobile]}>
-          <Text style={styles.kpiTitle}>Movimientos Registrados</Text>
-          <Text style={styles.kpiValue}>{historial.length}</Text>
+      {/* ENCABEZADO NORMAL (Oculto en PDF) */}
+      {!isPrinting && (
+        <View style={[styles.topHeader, isMobile && styles.topHeaderMobile]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.pageTitle, isMobile && { fontSize: 19 }]}>
+              Analítica, Historial y Auditoría
+            </Text>
+            <Text style={styles.pageSub}>
+              Indicadores gráficos conectados a inventario y atenciones
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.btnPrimary, isMobile && styles.btnPrimaryMobile]}
+            onPress={handleExportarPDF}
+          >
+            <Text style={styles.btnPrimaryText}>📄 Generar Reporte PDF</Text>
+          </TouchableOpacity>
         </View>
+      )}
 
-        <View style={[styles.kpiCard, isMobile && styles.kpiCardMobile]}>
-          <Text style={styles.kpiTitle}>Unidades Ingresadas</Text>
-          <Text style={styles.kpiValue}>+{analytics.totalEntradas} u.</Text>
+      {/* TARJETAS KPI: 2x2 REAL EN MÓVIL / 4 EN FILA EN ESCRITORIO Y PDF */}
+      {isMobile && !isPrinting ? (
+        <View style={{ gap: 10, marginBottom: 18 }}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={styles.kpiCard}>
+              <Text style={styles.kpiTitle}>Movimientos</Text>
+              <Text style={styles.kpiValue}>{historial.length}</Text>
+            </View>
+            <View style={styles.kpiCard}>
+              <Text style={styles.kpiTitle}>Ingresadas</Text>
+              <Text style={styles.kpiValue}>+{analytics.totalEntradas} u.</Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View
+              style={[
+                styles.kpiCard,
+                analytics.totalSalidas > 0 && styles.kpiCardWarning,
+              ]}
+            >
+              <Text style={styles.kpiTitle}>Suministradas</Text>
+              <Text
+                style={[
+                  styles.kpiValue,
+                  analytics.totalSalidas > 0 && { color: COLORS.danger },
+                ]}
+              >
+                -{analytics.totalSalidas} u.
+              </Text>
+            </View>
+            <View style={styles.kpiCard}>
+              <Text style={styles.kpiTitle}>Consultas</Text>
+              <Text style={styles.kpiValue}>
+                {analytics.totalAtencionesReal}
+              </Text>
+            </View>
+          </View>
         </View>
-
-        <View
-          style={[
-            styles.kpiCard,
-            isMobile && styles.kpiCardMobile,
-            analytics.totalSalidas > 0 && styles.kpiCardWarning,
-          ]}
-        >
-          <Text style={styles.kpiTitle}>Unidades Suministradas</Text>
-          <Text
+      ) : (
+        <View style={styles.kpiRow}>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiTitle}>Movimientos Registrados</Text>
+            <Text style={styles.kpiValue}>{historial.length}</Text>
+          </View>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiTitle}>Unidades Ingresadas</Text>
+            <Text style={styles.kpiValue}>+{analytics.totalEntradas} u.</Text>
+          </View>
+          <View
             style={[
-              styles.kpiValue,
-              analytics.totalSalidas > 0 && { color: COLORS.danger },
+              styles.kpiCard,
+              analytics.totalSalidas > 0 && styles.kpiCardWarning,
             ]}
           >
-            -{analytics.totalSalidas} u.
-          </Text>
+            <Text style={styles.kpiTitle}>Unidades Suministradas</Text>
+            <Text
+              style={[
+                styles.kpiValue,
+                analytics.totalSalidas > 0 && { color: COLORS.danger },
+              ]}
+            >
+              -{analytics.totalSalidas} u.
+            </Text>
+          </View>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiTitle}>Consultas Atendidas</Text>
+            <Text style={styles.kpiValue}>
+              {analytics.totalAtencionesReal}
+            </Text>
+          </View>
         </View>
+      )}
 
-        <View style={[styles.kpiCard, isMobile && styles.kpiCardMobile]}>
-          <Text style={styles.kpiTitle}>Consultas Atendidas</Text>
-          <Text style={styles.kpiValue}>{analytics.totalAtencionesReal}</Text>
-        </View>
-      </View>
-
-      {/* GRÁFICAS (2 columnas en PC, apiladas verticalmente en Celular) */}
-      <View style={[styles.chartsGrid, isMobile && styles.chartsGridMobile]}>
-        {/* GRÁFICA 1: EXISTENCIAS POR INSUMO */}
-        <View style={styles.chartCard}>
+      {/* GRÁFICAS */}
+      <View
+        style={[
+          styles.chartsGrid,
+          isMobile && !isPrinting && styles.chartsGridMobile,
+        ]}
+      >
+        {/* GRÁFICA IZQUIERDA */}
+        <View
+          style={[
+            styles.chartCard,
+            (!isMobile || isPrinting) && { flex: 1 },
+          ]}
+        >
           <View style={styles.chartTitleBar}>
             <Text style={styles.tableHeaderTitle}>
-              EXISTENCIAS ACTUALES POR INSUMO
+              EXISTENCIAS POR INSUMO
             </Text>
             <Text style={styles.sourceBadge}>Inventario</Text>
           </View>
@@ -194,14 +275,20 @@ export default function HistorialScreen({ navigation }) {
                 No hay productos registrados en el inventario.
               </Text>
             ) : (
-              analytics.topInventario.map((item) => {
+              analytics.topInventario.map((item, idx, arr) => {
                 const pct = Math.min(
                   100,
                   Math.round((item.stock / analytics.maxStock) * 100)
                 );
                 const isLow = item.stock <= (item.stockMinimo || 5);
                 return (
-                  <View key={item.id} style={styles.barItem}>
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.barItem,
+                      idx === arr.length - 1 && { marginBottom: 2 },
+                    ]}
+                  >
                     <View style={styles.barLabelRow}>
                       <Text style={styles.barLabel} numberOfLines={1}>
                         {item.nombre}
@@ -235,13 +322,13 @@ export default function HistorialScreen({ navigation }) {
           </View>
         </View>
 
-        {/* COLUMNA DERECHA: FLUJO Y ATENCIONES POR ROL */}
+        {/* COLUMNA DERECHA */}
         <View style={styles.rightChartsColumn}>
-          {/* GRÁFICA 2 */}
-          <View style={[styles.chartCard, { marginBottom: 14 }]}>
+          {/* GRÁFICA SUPERIOR DERECHA */}
+          <View style={styles.chartCard}>
             <View style={styles.chartTitleBar}>
               <Text style={styles.tableHeaderTitle}>
-                BALANCE DE FLUJO DE INVENTARIO
+                FLUJO DE INVENTARIO
               </Text>
               <Text style={styles.sourceBadge}>Historial</Text>
             </View>
@@ -275,9 +362,9 @@ export default function HistorialScreen({ navigation }) {
                 </View>
               </View>
 
-              <View style={[styles.barItem, { marginBottom: 0 }]}>
+              <View style={[styles.barItem, { marginBottom: 2 }]}>
                 <View style={styles.barLabelRow}>
-                  <Text style={styles.barLabel}>Salidas / Consumo Médico</Text>
+                  <Text style={styles.barLabel}>Salidas / Consumo</Text>
                   <Text
                     style={[styles.barValueText, { color: COLORS.danger }]}
                   >
@@ -307,7 +394,7 @@ export default function HistorialScreen({ navigation }) {
             </View>
           </View>
 
-          {/* GRÁFICA 3 */}
+          {/* GRÁFICA INFERIOR DERECHA: POBLACIÓN ATENDIDA POR ROL */}
           <View style={styles.chartCard}>
             <View style={styles.chartTitleBar}>
               <Text style={styles.tableHeaderTitle}>
@@ -337,7 +424,7 @@ export default function HistorialScreen({ navigation }) {
                       key={rolName}
                       style={[
                         styles.barItem,
-                        idx === arr.length - 1 && { marginBottom: 0 },
+                        idx === arr.length - 1 && { marginBottom: 2 },
                       ]}
                     >
                       <View style={styles.barLabelRow}>
@@ -366,168 +453,302 @@ export default function HistorialScreen({ navigation }) {
         </View>
       </View>
 
-      {/* TABLA DE TRAZABILIDAD CON SCROLL HORIZONTAL EN MÓVIL */}
-      <View style={styles.tableCard}>
-        <View style={styles.tableTitleBar}>
-          <Text style={styles.tableHeaderTitle}>
-            REGISTRO DE TRAZABILIDAD DE INVENTARIO
-          </Text>
-        </View>
-
-        <ScrollView horizontal={isMobile} showsHorizontalScrollIndicator={true}>
-          <View style={isMobile ? { minWidth: 700 } : { width: '100%' }}>
-            <View style={styles.tableHeaderRow}>
-              <Text style={[styles.th, { flex: 1.4 }]}>FECHA / HORA</Text>
-              <Text style={[styles.th, { flex: 1.1 }]}>TIPO</Text>
-              <Text style={[styles.th, { flex: 2 }]}>INSUMO / PRODUCTO</Text>
-              <Text style={[styles.th, { flex: 1, textAlign: 'center' }]}>
-                CANTIDAD
-              </Text>
-              <Text style={[styles.th, { flex: 2.5 }]}>
-                OBSERVACIONES / DETALLE
-              </Text>
-            </View>
-
-            {historial.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Text style={styles.emptyText}>
-                  No hay movimientos registrados en la tabla.
-                </Text>
-                <Text style={styles.emptySub}>
-                  Los ingresos de stock y descuentos por atención aparecerán aquí automáticamente.
+      {/* TRAZABILIDAD: OCULTA COMPLETAMENTE AL GENERAR EL PDF */}
+      {!isPrinting && (
+        <>
+          {isMobile ? (
+            <View>
+              <View style={styles.mobileSectionHeader}>
+                <Text style={styles.tableHeaderTitle}>
+                  TRAZABILIDAD DE MOVIMIENTOS ({historial.length})
                 </Text>
               </View>
-            ) : (
-              historial.map((item, index) => {
-                const isSalida =
-                  String(item.cantidad).includes('-') ||
-                  item.tipo === 'Salida_Atencion';
-                return (
-                  <View key={item.id || index} style={styles.tableRow}>
-                    <Text style={[styles.tdCode, { flex: 1.4 }]}>
-                      {item.fecha}
-                    </Text>
-                    <Text style={[styles.tdCategory, { flex: 1.1 }]}>
-                      {item.tipo}
-                    </Text>
-                    <Text style={[styles.td, { flex: 2, fontWeight: 'bold' }]}>
-                      {item.insumo}
-                    </Text>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                      <Text
-                        style={[
-                          styles.badgeStock,
-                          isSalida && styles.badgeLow,
-                        ]}
-                      >
-                        {item.cantidad}
-                      </Text>
+
+              {historial.length === 0 ? (
+                <View style={styles.mobileEmptyCard}>
+                  <Text style={styles.emptyText}>No hay movimientos registrados.</Text>
+                  <Text style={styles.emptySub}>
+                    Los ingresos y salidas aparecerán aquí automáticamente.
+                  </Text>
+                </View>
+              ) : (
+                historial.map((item, index) => {
+                  const isSalida =
+                    String(item.cantidad).includes('-') ||
+                    item.tipo === 'Salida_Atencion';
+                  return (
+                    <View key={item.id || index} style={styles.mobileItemCard}>
+                      <View style={styles.mobileCardTop}>
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <Text style={styles.mobileCodeBadge}>
+                            {item.fecha} · {item.tipo}
+                          </Text>
+                          <Text style={styles.mobileCardTitle}>{item.insumo}</Text>
+                        </View>
+                        <Text
+                          style={[styles.badgeStock, isSalida && styles.badgeLow]}
+                        >
+                          {item.cantidad}
+                        </Text>
+                      </View>
+                      <Text style={styles.mobileObsText}>{item.obs}</Text>
                     </View>
-                    <Text style={[styles.td, { flex: 2.5 }]}>{item.obs}</Text>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        </ScrollView>
-      </View>
+                  );
+                })
+              )}
+            </View>
+          ) : (
+            <View style={styles.tableCard}>
+              <View style={styles.tableTitleBar}>
+                <Text style={styles.tableHeaderTitle}>
+                  REGISTRO DE TRAZABILIDAD DE INVENTARIO
+                </Text>
+              </View>
+
+              <View style={styles.tableHeaderRow}>
+                <Text style={[styles.th, { flex: 1.4 }]}>FECHA / HORA</Text>
+                <Text style={[styles.th, { flex: 1.1 }]}>TIPO</Text>
+                <Text style={[styles.th, { flex: 2 }]}>INSUMO / PRODUCTO</Text>
+                <Text style={[styles.th, { flex: 1, textAlign: 'center' }]}>
+                  CANTIDAD
+                </Text>
+                <Text style={[styles.th, { flex: 2.5 }]}>
+                  OBSERVACIONES / DETALLE
+                </Text>
+              </View>
+
+              {historial.length === 0 ? (
+                <View style={styles.emptyBox}>
+                  <Text style={styles.emptyText}>
+                    No hay movimientos registrados en la tabla.
+                  </Text>
+                  <Text style={styles.emptySub}>
+                    Los ingresos de stock y descuentos por atención aparecerán aquí automáticamente.
+                  </Text>
+                </View>
+              ) : (
+                historial.map((item, index) => {
+                  const isSalida =
+                    String(item.cantidad).includes('-') ||
+                    item.tipo === 'Salida_Atencion';
+                  return (
+                    <View key={item.id || index} style={styles.tableRow}>
+                      <Text style={[styles.tdCode, { flex: 1.4 }]}>
+                        {item.fecha}
+                      </Text>
+                      <Text style={[styles.tdCategory, { flex: 1.1 }]}>
+                        {item.tipo}
+                      </Text>
+                      <Text style={[styles.td, { flex: 2, fontWeight: 'bold' }]}>
+                        {item.insumo}
+                      </Text>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <Text
+                          style={[styles.badgeStock, isSalida && styles.badgeLow]}
+                        >
+                          {item.cantidad}
+                        </Text>
+                      </View>
+                      <Text style={[styles.td, { flex: 2.5 }]}>{item.obs}</Text>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </>
+      )}
     </ResponsiveLayout>
   );
 }
 
 const styles = StyleSheet.create({
+  printOnlyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.primary,
+    paddingBottom: 12,
+    marginBottom: 18,
+  },
+  printBrand: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.primary,
+    letterSpacing: 0.8,
+  },
+  printSystem: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+  printMeta: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
   topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
     gap: 12,
   },
-  topHeaderMobile: { flexDirection: 'column', alignItems: 'flex-start' },
+  topHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   pageTitle: { fontSize: 22, fontWeight: '900', color: COLORS.textPrimary },
-  pageSub: { fontSize: 12, color: COLORS.textSecondary },
+  pageSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   btnPrimary: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 6,
+    paddingVertical: 11,
+    borderRadius: 8,
   },
-  btnPrimaryMobile: { alignSelf: 'stretch', alignItems: 'center' },
-  btnPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
+  btnPrimaryMobile: { alignItems: 'center' },
+  btnPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
 
   kpiRow: { flexDirection: 'row', gap: 14, marginBottom: 20 },
-  kpiRowMobile: { flexWrap: 'wrap', gap: 10 },
   kpiCard: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  kpiCardMobile: { flex: undefined, width: '48%' },
   kpiCardWarning: {
     borderColor: COLORS.danger,
-    backgroundColor: 'rgba(255, 235, 238, 0.88)',
+    backgroundColor: 'rgba(255, 235, 238, 0.92)',
   },
-  kpiTitle: { fontSize: 10, color: COLORS.textSecondary, marginBottom: 6 },
+  kpiTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
   kpiValue: { fontSize: 22, fontWeight: '900', color: COLORS.primary },
 
-  chartsGrid: { flexDirection: 'row', gap: 14, marginBottom: 20 },
-  chartsGridMobile: { flexDirection: 'column' },
-  rightChartsColumn: { flex: 1 },
-  chartCard: {
+  chartsGrid: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 14,
+    marginBottom: 20,
+  },
+  chartsGridMobile: {
+    flexDirection: 'column',
+    gap: 14,
+  },
+  rightChartsColumn: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 8,
+    gap: 14,
+  },
+  chartCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
   },
   chartTitleBar: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   sourceBadge: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
     color: COLORS.primary,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  chartBody: { padding: 14 },
-  barItem: { marginBottom: 11 },
+  chartBody: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  barItem: {
+    marginBottom: 14,
+  },
   barLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    marginBottom: 6,
   },
   barLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.textPrimary,
     maxWidth: '72%',
   },
   barValueText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     color: COLORS.primary,
   },
   barTrack: {
-    height: 9,
+    height: 10,
     backgroundColor: COLORS.surfaceCard,
-    borderRadius: 4,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
   },
-  barFill: { height: '100%', borderRadius: 3 },
+  barFill: { height: '100%', borderRadius: 4 },
+
+  mobileSectionHeader: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  mobileEmptyCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    padding: 28,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  mobileItemCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  mobileCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  mobileCodeBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  mobileCardTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+  mobileObsText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
 
   tableCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -541,7 +762,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   tableHeaderRow: {
     flexDirection: 'row',
@@ -565,10 +786,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accentLight,
     color: COLORS.primary,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingVertical: 3,
+    borderRadius: 6,
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
   badgeLow: { backgroundColor: '#FFEBEE', color: COLORS.danger },
   emptyBox: { padding: 40, alignItems: 'center' },

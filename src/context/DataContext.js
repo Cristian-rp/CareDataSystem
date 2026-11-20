@@ -1,16 +1,42 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
 export const DataContext = createContext();
 
+const DEFAULT_USERS = [
+  {
+    id: '1',
+    usuario: 'cestebanruiz',
+    nombreCompleto: 'Cristian Esteban Ruiz',
+    correo: 'cestebanruiz@ucundinamarca.edu.co',
+    password: 'udec2026',
+    cargo: 'Enfermería · Turno Mañana',
+  },
+  {
+    id: '2',
+    usuario: 'jalejandroquinones',
+    nombreCompleto: 'Jim Alejandro Quiñones',
+    correo: 'jalejandroquinones@ucundinamarca.edu.co',
+    password: 'udec2026',
+    cargo: 'Enfermería · Turno Tarde',
+  },
+];
+
+const STORAGE_USERS_KEY = 'caredata_users_v1';
+const STORAGE_SESSION_KEY = 'caredata_session_v1';
+
 export const DataProvider = ({ children }) => {
+  const [registeredUsers, setRegisteredUsers] = useState(DEFAULT_USERS);
+  const [currentUser, setCurrentUser] = useState(null);
+
   const [inventario, setInventario] = useState([]);
   const [atenciones, setAtenciones] = useState([]);
   const [historial, setHistorial] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. Cargar datos iniciales desde Supabase al abrir la app
+  // 1. Cargar datos iniciales desde Supabase + sesión local al abrir la app
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -32,7 +58,134 @@ export const DataProvider = ({ children }) => {
       }
     };
     cargarDatos();
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        const savedUsers = window.localStorage.getItem(STORAGE_USERS_KEY);
+        if (savedUsers) setRegisteredUsers(JSON.parse(savedUsers));
+
+        const savedSession = window.localStorage.getItem(STORAGE_SESSION_KEY);
+        if (savedSession) setCurrentUser(JSON.parse(savedSession));
+      } catch (e) {
+        console.warn('Error leyendo sesión local:', e);
+      }
+    }
   }, []);
+
+  // --- FUNCIONES DE AUTENTICACIÓN (Supabase + respaldo local) ---
+  const loginUsuario = async (identificador, password) => {
+    const idClean = identificador.trim().toLowerCase();
+    const passClean = password.trim();
+
+    try {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('*')
+        .or(`usuario.ilike.${idClean},correo.ilike.${idClean}`)
+        .eq('password', passClean)
+        .maybeSingle();
+
+      if (data) {
+        setCurrentUser(data);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(data));
+        }
+        return { ok: true, user: data };
+      }
+    } catch (_) {}
+
+    const encontrado = registeredUsers.find(
+      (u) =>
+        (u.usuario.toLowerCase() === idClean ||
+          u.correo.toLowerCase() === idClean) &&
+        u.password === passClean
+    );
+
+    if (!encontrado) {
+      return { ok: false, error: 'Usuario/correo o contraseña incorrectos.' };
+    }
+
+    setCurrentUser(encontrado);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(encontrado));
+    }
+    return { ok: true, user: encontrado };
+  };
+
+  const registrarUsuario = async ({ nombreCompleto, usuario, correo, cargo, password }) => {
+    const userClean = usuario.trim().toLowerCase();
+    const mailClean = correo.trim().toLowerCase();
+
+    const yaExiste = registeredUsers.some(
+      (u) => u.usuario.toLowerCase() === userClean || u.correo.toLowerCase() === mailClean
+    );
+    if (yaExiste) {
+      return { ok: false, error: 'Ese usuario o correo institucional ya está registrado.' };
+    }
+
+    const nuevoUsuario = {
+      usuario: userClean,
+      nombreCompleto: nombreCompleto.trim(),
+      correo: mailClean,
+      cargo: cargo.trim() || 'Personal de Enfermería',
+      password: password.trim(),
+    };
+
+    try {
+      const { data } = await supabase
+        .from('usuarios')
+        .insert([nuevoUsuario])
+        .select()
+        .single();
+      if (data) nuevoUsuario.id = data.id;
+    } catch (_) {}
+
+    if (!nuevoUsuario.id) nuevoUsuario.id = Date.now().toString();
+
+    const listaActualizada = [...registeredUsers, nuevoUsuario];
+    setRegisteredUsers(listaActualizada);
+    setCurrentUser(nuevoUsuario);
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(listaActualizada));
+      window.localStorage.setItem(STORAGE_SESSION_KEY, JSON.stringify(nuevoUsuario));
+    }
+
+    return { ok: true, user: nuevoUsuario };
+  };
+
+  const actualizarPassword = async (identificador, nuevaPassword) => {
+    const idClean = identificador.trim().toLowerCase();
+    const idx = registeredUsers.findIndex(
+      (u) => u.usuario.toLowerCase() === idClean || u.correo.toLowerCase() === idClean
+    );
+
+    try {
+      await supabase
+        .from('usuarios')
+        .update({ password: nuevaPassword.trim() })
+        .or(`usuario.ilike.${idClean},correo.ilike.${idClean}`);
+    } catch (_) {}
+
+    if (idx === -1) {
+      return { ok: false, error: 'No encontramos ninguna cuenta con ese usuario o correo.' };
+    }
+
+    const listaActualizada = [...registeredUsers];
+    listaActualizada[idx] = { ...listaActualizada[idx], password: nuevaPassword.trim() };
+    setRegisteredUsers(listaActualizada);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(listaActualizada));
+    }
+    return { ok: true };
+  };
+
+  const logoutUsuario = () => {
+    setCurrentUser(null);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.localStorage.removeItem(STORAGE_SESSION_KEY);
+    }
+  };
 
   // Función auxiliar para guardar en el historial
   const registrarMovimiento = async (tipo, cantidad, insumo, obs) => {
@@ -240,6 +393,12 @@ export const DataProvider = ({ children }) => {
   return (
     <DataContext.Provider
       value={{
+        currentUser,
+        registeredUsers,
+        loginUsuario,
+        registrarUsuario,
+        actualizarPassword,
+        logoutUsuario,
         inventario,
         atenciones,
         historial,

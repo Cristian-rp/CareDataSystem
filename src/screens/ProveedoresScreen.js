@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Modal,
   Alert,
@@ -85,8 +84,8 @@ export default function ProveedoresScreen({ navigation }) {
     <ResponsiveLayout activeScreen="Proveedores" navigation={navigation}>
       <View style={[styles.topHeader, isMobile && styles.topHeaderMobile]}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.pageTitle, isMobile && { fontSize: 18 }]}>
-            Directorio de Proveedores e Insumos
+          <Text style={[styles.pageTitle, isMobile && { fontSize: 19 }]}>
+            Directorio de Proveedores
           </Text>
           <Text style={styles.pageSub}>
             Gestión de distribuidores para solicitudes de reabastecimiento
@@ -100,71 +99,129 @@ export default function ProveedoresScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tableCard}>
-        <View style={styles.tableTitleBar}>
-          <Text style={styles.tableHeaderTitle}>
-            TABLA DE PROVEEDORES AUTORIZADOS
-          </Text>
-        </View>
+      {isMobile ? (
+        <View>
+          <View style={styles.mobileSectionHeader}>
+            <Text style={styles.tableHeaderTitle}>
+              PROVEEDORES AUTORIZADOS ({proveedores.length})
+            </Text>
+          </View>
 
-        <ScrollView horizontal={isMobile} showsHorizontalScrollIndicator={true}>
-          <View style={isMobile ? { minWidth: 680 } : { width: '100%' }}>
-            <View style={styles.tableHeaderRow}>
-              <Text style={[styles.th, { flex: 2.1 }]}>
-                EMPRESA / RAZÓN SOCIAL
-              </Text>
-              <Text style={[styles.th, { flex: 1.3 }]}>TELÉFONO</Text>
-              <Text style={[styles.th, { flex: 2 }]}>CORREO ELECTRÓNICO</Text>
-              <Text style={[styles.th, { flex: 1 }]}>CIUDAD</Text>
-              <Text style={[styles.th, { flex: 1.1, textAlign: 'right' }]}>
-                ACCIONES
+          {proveedores.length === 0 ? (
+            <View style={styles.mobileEmptyCard}>
+              <Text style={styles.emptyText}>No hay proveedores registrados.</Text>
+              <Text style={styles.emptySub}>
+                Toca "+ Registrar Proveedor" para agregar uno.
               </Text>
             </View>
-
-            {proveedores.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <Text style={styles.emptyText}>
-                  No hay proveedores registrados en la tabla.
-                </Text>
-                <Text style={styles.emptySub}>
-                  Presiona "+ Registrar Proveedor" para agregar un distribuidor.
-                </Text>
-              </View>
-            ) : (
-              proveedores.map((item) => (
-                <View key={item.id} style={styles.tableRow}>
-                  <Text style={[styles.td, { flex: 2.1, fontWeight: 'bold' }]}>
-                    {item.empresa}
-                  </Text>
-                  <Text style={[styles.tdCode, { flex: 1.3 }]}>
-                    {item.telefono}
-                  </Text>
-                  <Text style={[styles.tdCategory, { flex: 2 }]}>
-                    {item.correo}
-                  </Text>
-                  <Text style={[styles.td, { flex: 1 }]}>{item.ciudad}</Text>
-
-                  <View style={[styles.actionRow, { flex: 1.1 }]}>
-                    <TouchableOpacity
-                      style={styles.btnEdit}
-                      onPress={() => abrirModalEditar(item)}
-                    >
-                      <Text style={styles.btnEditText}>✏️ Editar</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.btnDangerSmall}
-                      onPress={() => eliminarProveedor(item.id)}
-                    >
-                      <Text style={styles.btnDangerText}>✕</Text>
-                    </TouchableOpacity>
+          ) : (
+            proveedores.map((item) => (
+              <View key={item.id} style={styles.mobileItemCard}>
+                <View style={styles.mobileCardTop}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.mobileCardTitle}>{item.empresa}</Text>
+                    <Text style={styles.mobilePhoneText}>
+                      📞 {item.telefono}
+                    </Text>
+                    <Text style={styles.mobileCardSub}>✉️ {item.correo}</Text>
+                  </View>
+                  <View style={styles.cityPill}>
+                    <Text style={styles.cityPillText}>{item.ciudad}</Text>
                   </View>
                 </View>
-              ))
-            )}
+
+                <View style={styles.mobileCardActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.mobileActionBtn,
+                      styles.mobileActionBtnPrimary,
+                    ]}
+                    onPress={() => abrirModalEditar(item)}
+                  >
+                    <Text style={styles.mobileActionBtnPrimaryText}>
+                      ✏️ Editar
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.mobileActionBtn,
+                      styles.mobileActionBtnDanger,
+                    ]}
+                    onPress={() => eliminarProveedor(item.id)}
+                  >
+                    <Text style={styles.mobileActionBtnDangerText}>
+                      ✕ Eliminar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      ) : (
+        <View style={styles.tableCard}>
+          <View style={styles.tableTitleBar}>
+            <Text style={styles.tableHeaderTitle}>
+              TABLA DE PROVEEDORES AUTORIZADOS
+            </Text>
           </View>
-        </ScrollView>
-      </View>
+
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.th, { flex: 2.1 }]}>
+              EMPRESA / RAZÓN SOCIAL
+            </Text>
+            <Text style={[styles.th, { flex: 1.3 }]}>TELÉFONO</Text>
+            <Text style={[styles.th, { flex: 2 }]}>CORREO ELECTRÓNICO</Text>
+            <Text style={[styles.th, { flex: 1 }]}>CIUDAD</Text>
+            <Text style={[styles.th, { flex: 1.1, textAlign: 'right' }]}>
+              ACCIONES
+            </Text>
+          </View>
+
+          {proveedores.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>
+                No hay proveedores registrados en la tabla.
+              </Text>
+              <Text style={styles.emptySub}>
+                Presiona "+ Registrar Proveedor" para agregar un distribuidor.
+              </Text>
+            </View>
+          ) : (
+            proveedores.map((item) => (
+              <View key={item.id} style={styles.tableRow}>
+                <Text style={[styles.td, { flex: 2.1, fontWeight: 'bold' }]}>
+                  {item.empresa}
+                </Text>
+                <Text style={[styles.tdCode, { flex: 1.3 }]}>
+                  {item.telefono}
+                </Text>
+                <Text style={[styles.tdCategory, { flex: 2 }]}>
+                  {item.correo}
+                </Text>
+                <Text style={[styles.td, { flex: 1 }]}>{item.ciudad}</Text>
+
+                <View style={[styles.actionRow, { flex: 1.1 }]}>
+                  <TouchableOpacity
+                    style={styles.btnEdit}
+                    onPress={() => abrirModalEditar(item)}
+                  >
+                    <Text style={styles.btnEditText}>✏️ Editar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.btnDangerSmall}
+                    onPress={() => eliminarProveedor(item.id)}
+                  >
+                    <Text style={styles.btnDangerText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      )}
 
       {/* MODAL REGISTRAR / EDITAR PROVEEDOR */}
       <Modal visible={modalVisible} animationType="fade" transparent={true}>
@@ -178,7 +235,7 @@ export default function ProveedoresScreen({ navigation }) {
               </Text>
             </View>
 
-            <View style={{ padding: 20 }}>
+            <View style={{ padding: 18 }}>
               <Text style={styles.labelField}>Empresa / Razón Social:</Text>
               <TextInput
                 style={styles.input}
@@ -232,7 +289,7 @@ export default function ProveedoresScreen({ navigation }) {
                   onPress={handleGuardarProveedor}
                 >
                   <Text style={styles.btnSaveText}>
-                    {editingId ? 'Actualizar Proveedor' : 'Guardar Proveedor'}
+                    {editingId ? 'Actualizar' : 'Guardar'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -249,20 +306,114 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
     gap: 12,
   },
-  topHeaderMobile: { flexDirection: 'column', alignItems: 'flex-start' },
+  topHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   pageTitle: { fontSize: 22, fontWeight: '900', color: COLORS.textPrimary },
-  pageSub: { fontSize: 12, color: COLORS.textSecondary },
+  pageSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   btnPrimary: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 8,
+  },
+  btnPrimaryMobile: { alignItems: 'center' },
+  btnPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
+
+  mobileSectionHeader: {
+    backgroundColor: COLORS.primary,
     paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  mobileEmptyCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    padding: 28,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  mobileItemCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  mobileCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  mobileCardTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  mobilePhoneText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  mobileCardSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  cityPill: {
+    backgroundColor: COLORS.accentLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 6,
   },
-  btnPrimaryMobile: { alignSelf: 'stretch', alignItems: 'center' },
-  btnPrimaryText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
+  cityPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  mobileCardActions: {
+    flexDirection: 'row',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 10,
+  },
+  mobileActionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  mobileActionBtnPrimary: {
+    backgroundColor: '#DCFCE7',
+    borderColor: COLORS.primary,
+  },
+  mobileActionBtnPrimaryText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.primary,
+  },
+  mobileActionBtnDanger: {
+    backgroundColor: '#FFEBEE',
+    borderColor: '#FECACA',
+  },
+  mobileActionBtnDangerText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.danger,
+  },
+
   tableCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 8,
@@ -275,7 +426,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   tableHeaderRow: {
     flexDirection: 'row',
@@ -315,9 +466,10 @@ const styles = StyleSheet.create({
   emptyBox: { padding: 40, alignItems: 'center' },
   emptyText: { color: COLORS.textPrimary, fontSize: 14, fontWeight: 'bold' },
   emptySub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4 },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
@@ -326,7 +478,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
@@ -348,7 +500,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 6,
     marginBottom: 10,
-    fontSize: 12,
+    fontSize: 13,
   },
   modalActions: {
     flexDirection: 'row',
@@ -357,12 +509,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   btnCancel: { padding: 10 },
-  btnCancelText: { color: COLORS.textSecondary, fontSize: 12 },
+  btnCancelText: { color: COLORS.textSecondary, fontSize: 13 },
   btnSave: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 6,
   },
-  btnSaveText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 12 },
+  btnSaveText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 },
 });

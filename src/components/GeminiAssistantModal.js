@@ -13,21 +13,42 @@ import {
 import { DataContext } from '../context/DataContext';
 import { COLORS } from '../theme/colors';
 
-const GEMINI_API_KEY = 'AQ.Ab8RN6I8G9vAu4_fyg0srdONHXvViEgpwj1cZFGNv8KrfsORNQ';
+// Lee la clave desde .env (EXPO_PUBLIC_GEMINI_API_KEY) para evitar bloqueos de GitHub
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
 export default function GeminiAssistantModal({ visible, onClose }) {
-  const { inventario, atenciones } = useContext(DataContext);
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
+  const { inventario = [], atenciones = [], proveedores = [] } = useContext(DataContext);
   const [messages, setMessages] = useState([
     {
       sender: 'gemini',
-      text: '¡Hola! Soy tu asistente de IA conectado con la API de Google Gemini. Puedo analizar en tiempo real los datos visibles en pantalla para ayudarte con la gestión de inventario y compras.',
+      text: '¡Hola! Soy tu asistente de IA conectado con Google Gemini. Analizo en tiempo real los datos visibles en pantalla para ayudarte con la gestión de inventario y compras.',
     },
   ]);
   const [inputPrompt, setInputPrompt] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const consultarModelo = async (modelo, promptContexto) => {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_API_KEY.trim()}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: promptContexto }],
+            },
+          ],
+        }),
+      }
+    );
+    return await response.json();
+  };
 
   const handleSendMessage = async () => {
     if (!inputPrompt.trim()) return;
@@ -38,52 +59,81 @@ export default function GeminiAssistantModal({ visible, onClose }) {
     setLoading(true);
 
     try {
+      if (!GEMINI_API_KEY.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            sender: 'gemini',
+            text: 'Falta configurar EXPO_PUBLIC_GEMINI_API_KEY en el archivo .env de la raíz del proyecto.',
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
+
+      const stockBajo = inventario.filter(
+        (item) => item.stock <= (item.stockMinimo || 5)
+      );
+
       const datosPantalla = {
-        totalInsumosEnTabla: inventario ? inventario.length : 0,
-        detalleInventario: inventario || [],
-        totalAtencionesRegistradas: atenciones ? atenciones.length : 0,
+        totalTiposInsumos: inventario.length,
+        insumosEnStockBajo: stockBajo.map((i) => ({
+          nombre: i.nombre,
+          stockActual: i.stock,
+          stockMinimo: i.stockMinimo || 5,
+        })),
+        inventarioCompleto: inventario.map((i) => ({
+          codigo: i.codigo,
+          nombre: i.nombre,
+          categoria: i.categoria,
+          stock: i.stock,
+        })),
+        totalAtenciones: atenciones.length,
+        totalProveedores: proveedores.length,
       };
 
       const promptContexto = `
-        Eres el asistente de IA oficial para el sistema CareData System de la Enfermería de la Universidad de Cundinamarca (UDEC Soacha).
-        
-        INSTRUCCIONES OBLIGATORIAS:
-        1. Analiza EXCLUSIVAMENTE los datos de la pantalla actual provistos a continuación.
-        2. NO utilices ni hagas referencia a conversaciones pasadas ni a historiales previos.
-        3. Si la lista de insumos en la tabla tiene 0 elementos, indícalo explícitamente e informa que no hay productos registrados en pantalla.
+Eres el asistente de IA oficial de CareData System (Enfermería Universidad de Cundinamarca, Sede Soacha).
+Reglas:
+- Analiza ÚNICAMENTE los datos actuales en pantalla enviados abajo.
+- No inventes productos ni uses historial de chats anteriores.
+- Responde de forma clara, breve, directa y sin formato Markdown complejo.
 
-        [DATOS ACTUALMENTE VISIBLES EN PANTALLA]:
-        ${JSON.stringify(datosPantalla, null, 2)}
+[DATOS EN PANTALLA]:
+${JSON.stringify(datosPantalla)}
 
-        [CONSULTA DEL USUARIO EN PANTALLA]:
-        "${userText}"
-      `;
+[CONSULTA DEL USUARIO]:
+${userText}
+      `.trim();
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: promptContexto }] }] }),
+      // Cadena de modelos vigentes solicitados por la API de Google
+      const modelos = ['gemini-3.0-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+      let data = null;
+
+      for (const modelo of modelos) {
+        data = await consultarModelo(modelo, promptContexto);
+        if (!data.error || (data.error.code !== 404 && data.error.code !== 400)) {
+          break;
         }
-      );
+      }
 
-      const data = await response.json();
       let botReply = '';
-      
-      if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+      if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
         botReply = data.candidates[0].content.parts[0].text;
-      } else if (data.error) {
+      } else if (data?.error) {
         botReply = `Error de Google API (${data.error.code}): ${data.error.message}`;
       } else {
-        botReply = 'No se obtuvo una respuesta válida del servicio de Google Gemini.';
+        botReply = 'No se recibió respuesta del modelo Gemini.';
       }
 
       setMessages((prev) => [...prev, { sender: 'gemini', text: botReply }]);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { sender: 'gemini', text: `Error de red: ${error.message || 'No se pudo conectar con el servidor.'}` },
+        {
+          sender: 'gemini',
+          text: `Error de conexión: ${error.message || 'Verifica tu conexión a internet.'}`,
+        },
       ]);
     } finally {
       setLoading(false);
@@ -92,10 +142,10 @@ export default function GeminiAssistantModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.modalOverlay, isMobile && { padding: 0 }]}>
-        <View style={[styles.chatWindow, isMobile && { width: '100%', height: '90%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]}>
+      <View style={[styles.modalOverlay, isMobile && styles.modalOverlayMobile]}>
+        <View style={[styles.chatWindow, isMobile && styles.chatWindowMobile]}>
           <View style={styles.chatHeader}>
-            <Text style={styles.chatHeaderTitle}>✨ Asistente IA - Google Gemini API</Text>
+            <Text style={styles.chatHeaderTitle}>✨ Asistente IA - Google Gemini</Text>
             <TouchableOpacity onPress={onClose} style={styles.btnClose}>
               <Text style={styles.btnCloseText}>✕</Text>
             </TouchableOpacity>
@@ -105,9 +155,17 @@ export default function GeminiAssistantModal({ visible, onClose }) {
             {messages.map((msg, index) => (
               <View
                 key={index}
-                style={[styles.messageBubble, msg.sender === 'user' ? styles.userBubble : styles.geminiBubble]}
+                style={[
+                  styles.messageBubble,
+                  msg.sender === 'user' ? styles.userBubble : styles.geminiBubble,
+                ]}
               >
-                <Text style={[styles.messageText, msg.sender === 'user' ? styles.userText : styles.geminiText]}>
+                <Text
+                  style={[
+                    styles.messageText,
+                    msg.sender === 'user' ? styles.userText : styles.geminiText,
+                  ]}
+                >
                   {msg.text}
                 </Text>
               </View>
@@ -115,7 +173,7 @@ export default function GeminiAssistantModal({ visible, onClose }) {
             {loading && (
               <View style={styles.loadingBox}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Gemini analizando la pantalla actual...</Text>
+                <Text style={styles.loadingText}>Gemini analizando inventario...</Text>
               </View>
             )}
           </ScrollView>
@@ -140,23 +198,79 @@ export default function GeminiAssistantModal({ visible, onClose }) {
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)', padding: 20 },
-  chatWindow: { width: 380, height: 480, backgroundColor: COLORS.surface, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  chatHeader: { backgroundColor: COLORS.primary, padding: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    padding: 20,
+  },
+  modalOverlayMobile: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 14,
+  },
+  chatWindow: {
+    width: 380,
+    height: 480,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  chatWindowMobile: {
+    width: '100%',
+    height: '78%',
+  },
+  chatHeader: {
+    backgroundColor: COLORS.primary,
+    padding: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   chatHeaderTitle: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
   btnClose: { paddingHorizontal: 8 },
-  btnCloseText: { color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' },
+  btnCloseText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
   messageArea: { flex: 1, padding: 12, backgroundColor: COLORS.background },
   messageBubble: { padding: 10, borderRadius: 8, marginBottom: 8, maxWidth: '85%' },
   userBubble: { alignSelf: 'flex-end', backgroundColor: COLORS.primary },
-  geminiBubble: { alignSelf: 'flex-start', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: COLORS.border },
-  messageText: { fontSize: 12 },
+  geminiBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  messageText: { fontSize: 12, lineHeight: 17 },
   userText: { color: '#FFFFFF' },
   geminiText: { color: COLORS.textPrimary },
   loadingBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 },
   loadingText: { fontSize: 11, color: COLORS.textSecondary },
-  inputRow: { flexDirection: 'row', padding: 10, backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.border, gap: 8 },
-  input: { flex: 1, backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 10, fontSize: 12, color: COLORS.textPrimary },
-  btnSend: { backgroundColor: COLORS.primary, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 6 },
+  inputRow: {
+    flexDirection: 'row',
+    padding: 10,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: COLORS.textPrimary,
+  },
+  btnSend: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
   btnSendText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 11 },
 });
